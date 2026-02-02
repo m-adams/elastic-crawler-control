@@ -1,13 +1,15 @@
 """
 Agents package for the Elastic Crawler Service.
 
-This package contains Agno-powered agents:
+This package contains Agno-powered agents and workflows:
 - site_investigation: Investigates websites to understand structure and content
 - site_investigation_tools: Agno tools for site investigation
 - config_generation: Generates Open Crawler YAML configurations
 - config_generation_tools: Agno tools for config generation
 - config_validation: Validates Open Crawler configurations
 - config_validation_tools: Agno tools for config validation
+- orchestration_workflow: Main workflow orchestrating all agents
+- workflow_models: Pydantic models for workflow state and I/O
 
 The agents use the Agno framework with the Elastic LLM Proxy for AI capabilities.
 """
@@ -54,6 +56,23 @@ from agents.config_validation_tools import (
     generate_validation_report,
     CONFIG_VALIDATION_TOOLS,
 )
+from agents.orchestration_workflow import (
+    ConfigGenerationWorkflow,
+    OrchestrationWorkflow,
+    create_config_workflow,
+)
+from agents.workflow_models import (
+    WorkflowInput,
+    WorkflowState,
+    WorkflowPhase,
+    WorkflowResult,
+    InvestigationResult,
+    ConfigGenerationResult,
+    ValidationResult,
+    ConfirmationType,
+    ConfirmationRequest,
+    ConfirmationResponse,
+)
 
 __all__ = [
     # Site Investigation Agent
@@ -92,4 +111,19 @@ __all__ = [
     "check_crawl_rules",
     "generate_validation_report",
     "CONFIG_VALIDATION_TOOLS",
+    # Orchestration Workflow
+    "ConfigGenerationWorkflow",
+    "OrchestrationWorkflow",
+    "create_config_workflow",
+    # Workflow Models
+    "WorkflowInput",
+    "WorkflowState",
+    "WorkflowPhase",
+    "WorkflowResult",
+    "InvestigationResult",
+    "ConfigGenerationResult",
+    "ValidationResult",
+    "ConfirmationType",
+    "ConfirmationRequest",
+    "ConfirmationResponse",
 ]
