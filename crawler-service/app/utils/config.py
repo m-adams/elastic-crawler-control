@@ -5,7 +5,8 @@ Loads environment variables from .env file using python-dotenv with override=Tru
 to ensure local variables take precedence.
 
 Environment Variables:
-    LLM_PROXY_URL: URL for LLM proxy service (OpenAI-compatible)
+    LLM_PROXY_BASE_URL: Base URL for LLM proxy service (OpenAI-compatible, e.g., .../v1)
+    LLM_PROXY_URL: Full URL for LLM proxy chat completions (legacy, for direct httpx calls)
     LLM_PROXY_API_KEY: API key for LLM proxy
     LLM_MODEL: Model name to use (default: claude-sonnet-4)
     ES_URL: Elasticsearch URL
@@ -28,6 +29,12 @@ class Config:
     """Application configuration loaded from environment variables."""
 
     # LLM Proxy Configuration
+    # Base URL for Agno (OpenAILike) - should end with /v1
+    LLM_PROXY_BASE_URL: str = os.getenv(
+        "LLM_PROXY_BASE_URL",
+        "https://litellm-proxy-service-1059491012611.us-central1.run.app/v1",
+    )
+    # Full URL for direct httpx calls (legacy llm_client.py)
     LLM_PROXY_URL: str = os.getenv(
         "LLM_PROXY_URL",
         "https://litellm-proxy-service-1059491012611.us-central1.run.app/v1/chat/completions",
