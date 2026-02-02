@@ -6,6 +6,8 @@ This package contains Agno-powered agents:
 - site_investigation_tools: Agno tools for site investigation
 - config_generation: Generates Open Crawler YAML configurations
 - config_generation_tools: Agno tools for config generation
+- config_validation: Validates Open Crawler configurations
+- config_validation_tools: Agno tools for config validation
 
 The agents use the Agno framework with the Elastic LLM Proxy for AI capabilities.
 """
@@ -39,6 +41,19 @@ from agents.config_generation_tools import (
     validate_config_structure,
     CONFIG_GENERATION_TOOLS,
 )
+from agents.config_validation import (
+    ConfigValidationAgent,
+    create_config_validation_agent,
+    CONFIG_VALIDATION_INSTRUCTIONS,
+)
+from agents.config_validation_tools import (
+    validate_yaml_syntax,
+    validate_schema,
+    check_extraction_rules,
+    check_crawl_rules,
+    generate_validation_report,
+    CONFIG_VALIDATION_TOOLS,
+)
 
 __all__ = [
     # Site Investigation Agent
@@ -66,4 +81,15 @@ __all__ = [
     "generate_full_config",
     "validate_config_structure",
     "CONFIG_GENERATION_TOOLS",
+    # Config Validation Agent
+    "ConfigValidationAgent",
+    "create_config_validation_agent",
+    "CONFIG_VALIDATION_INSTRUCTIONS",
+    # Config Validation Tools
+    "validate_yaml_syntax",
+    "validate_schema",
+    "check_extraction_rules",
+    "check_crawl_rules",
+    "generate_validation_report",
+    "CONFIG_VALIDATION_TOOLS",
 ]
