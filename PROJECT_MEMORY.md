@@ -2,6 +2,21 @@
 
 This file contains important project context and tooling information that should be remembered across sessions.
 
+## Git Structure
+
+This is a **fork** of `ugosan/elastic-crawler-control` with a feature branch for config generation:
+
+```
+m-adams/elastic-crawler-control (GitHub)
+├── main                         ← Synced with upstream
+└── feature/config-generator     ← Config generator work (this branch)
+```
+
+**Workflow**:
+- Work on `feature/config-generator` branch
+- Keep `main` synced with `upstream/main` for easy rebasing
+- When ready, open PR to `ugosan/elastic-crawler-control`
+
 ## Task Planning: Beads (bd)
 
 This project uses **Beads** (`bd`) for task planning and issue tracking. Beads is a git-backed issue tracker designed for AI-supervised coding workflows.
@@ -64,25 +79,28 @@ bd show <issue-id>
 - **Spec Management**: OpenSpec (in `openspec/` directory)
 
 ### Key Directories
-- `elastic-crawler-control/` - **Main project directory** (forked from ugosan/elastic-crawler-control)
-  - `crawler-service/app/` - FastAPI backend
-    - `routes/` - Modular route handlers (crawl.py, health.py, workflow.py)
-    - `utils/` - Shared utilities (config.py, llm_client.py, agno_model.py)
-    - `agents/` - **Agno-powered agents and workflow**
-      - `site_investigation.py` / `site_investigation_tools.py` - Site analysis agent
-      - `config_generation.py` / `config_generation_tools.py` - Config creation agent
-      - `config_validation.py` / `config_validation_tools.py` - Validation agent
-      - `orchestration_workflow.py` - Main Agno Workflow
-      - `workflow_state.py` - Pydantic state models
-    - `server.py` - FastAPI application entry point
-    - `models.py` - Pydantic models (both crawl execution and config generation)
-    - `tests/` - Test suite for agents and workflow
-  - `frontend/` - React + Elastic UI frontend
-- `knowledge/` - Open Crawler patterns + **Agno framework guide**
-  - `agno/workflow-guide.md` - **CRITICAL**: Read before modifying agent code
-- `openspec/` - OpenSpec specifications
-- `.beads/` - Beads issue tracker database and JSONL files
-- `hive-mind/` - Submodule with Elastic patterns
+```
+elastic-crawler-control/           # Root (this repo)
+├── crawler-service/app/           # FastAPI backend
+│   ├── routes/                    # API endpoints (crawl.py, workflow.py, etc.)
+│   ├── utils/                     # Shared utilities (config.py, llm_client.py)
+│   ├── agents/                    # **Agno-powered agents and workflow**
+│   │   ├── site_investigation.py  # Site analysis agent + tools
+│   │   ├── config_generation.py   # Config creation agent + tools
+│   │   ├── config_validation.py   # Validation agent + tools
+│   │   ├── orchestration_workflow.py  # Main Agno Workflow
+│   │   └── workflow_state.py      # Pydantic state models
+│   ├── server.py                  # FastAPI entry point
+│   ├── models.py                  # Pydantic models
+│   └── tests/                     # Test suite
+├── frontend/src/                  # React + Elastic UI
+│   └── components/                # ConfigGenerator, ConfigPreview, etc.
+├── knowledge/                     # Extraction patterns + Agno guide
+│   └── agno/workflow-guide.md     # **CRITICAL**: Read before modifying agents
+├── openspec/                      # Feature specifications
+├── docs/                          # Workflow documentation
+└── .beads/                        # Issue tracking
+```
 
 ### Agno Architecture (IMPORTANT)
 

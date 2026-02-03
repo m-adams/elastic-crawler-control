@@ -58,17 +58,23 @@ Total time: ~60-90 seconds per config
 ## Quick Start
 
 ```bash
+# This is a fork of ugosan/elastic-crawler-control
+# Working on: feature/config-generator branch
+
 # Check what's ready to work on
 bd ready
 
-# View project structure
-ls -la elastic-crawler-control/
+# Project structure
+ls -la                           # Root of fork
+ls crawler-service/app/          # Backend (FastAPI + Agno)
+ls frontend/src/components/      # Frontend (React)
 
-# Backend is in:
-elastic-crawler-control/crawler-service/app/
+# Run backend
+cd crawler-service && source ../venv/bin/activate
+uvicorn app.server:app --reload
 
-# Frontend is in:
-elastic-crawler-control/frontend/src/
+# Run frontend
+cd frontend && npm run dev
 ```
 
 ---
