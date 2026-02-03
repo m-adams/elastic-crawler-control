@@ -1,0 +1,79 @@
+# Open Crawler Config Generator - Cursor Rules
+
+## Task Planning: Beads (bd)
+
+This project uses **Beads** (`bd`) for task planning and issue tracking. Beads is a git-backed issue tracker designed for AI-supervised coding workflows.
+
+### Initialization
+- **Database**: `.beads/beads.db`
+- **Issue prefix**: `open-crawler-config-generator`
+- **Issues format**: `open-crawler-config-generator-{hash}` (e.g., `open-crawler-config-generator-g6t`)
+
+### Essential Commands
+
+```bash
+# Check what's ready to work on (no blockers)
+bd ready
+
+# List all issues
+bd list
+
+# Create a new task
+bd create "Task title" --description "Task description"
+
+# Close a task
+bd close <issue-id>
+
+# Add dependencies (B depends on A means A blocks B)
+bd dep add <depends-on-id> <issue-id> -t blocks
+
+# View issue details
+bd show <issue-id>
+
+# Check project status
+bd status
+```
+
+### Workflow
+1. **Start session**: Run `bd ready` to see unblocked work
+2. **Work on tasks**: Focus on ready tasks (no blockers)
+3. **Update dependencies**: Add blockers as you discover them
+4. **Close tasks**: Use `bd close <issue-id>` when complete
+
+### Linking Issues to Specs
+Link Beads issues to OpenSpec specifications using labels:
+```bash
+# Add spec label when creating
+bd create "Task title" --labels "spec:site-investigation"
+
+# Add to existing issue
+bd label add <issue-id> spec:orchestration
+
+# Find all issues for a spec
+bd list --label spec:config-generation
+```
+See `openspec/AGENTS.md` for full list of spec labels.
+
+### Project Context
+- All tasks follow naming: `Phase X.Y: Description`
+- Dependencies reflect implementation phases
+- Tasks stored in `.beads/issues.jsonl` (git-backed)
+
+### Reference
+- Beads docs: https://steveyegge.github.io/beads/
+- Detailed guide: `hive-mind/meta/workflows/BEADS_ISSUE_TRACKER.md`
+- Project memory: `PROJECT_MEMORY.md`
+
+## Project Structure
+
+- **Backend**: Python FastAPI in `backend/` directory
+- **Task Planning**: Beads (bd) - check `bd ready` first
+- **Specs**: OpenSpec in `openspec/` directory
+- **Knowledge**: Hive-mind patterns in `hive-mind/` submodule
+
+## Key Reminders
+
+- Always check `bd ready` at start of work session
+- Use `python-dotenv` with `override=True` for env vars
+- No mocking - use real services (Open Crawler, Elasticsearch)
+- Code should be modular, small files, well-documented

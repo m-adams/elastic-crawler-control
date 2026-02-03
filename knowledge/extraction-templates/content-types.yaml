@@ -1,0 +1,233 @@
+# Content Type Field Definitions
+# 
+# These define WHAT fields to extract for each content type.
+# The actual selectors are generated dynamically by analyzing the real page.
+#
+# Usage:
+# 1. Detect content type from page analysis
+# 2. Look up desired fields from this file
+# 3. LLM analyzes actual HTML to generate selectors
+# 4. Test extraction, iterate if needed
+
+content_types:
+
+  products:
+    description: E-commerce product pages
+    use_cases:
+      - Product search with faceted filtering
+      - Price comparison
+      - Inventory tracking
+    
+    fields:
+      # Required for basic product search
+      - name: title
+        description: Product name
+        required: true
+      
+      - name: price
+        description: Current price (numeric)
+        required: true
+        type: number
+      
+      - name: currency
+        description: Price currency (USD, EUR)
+        default: "USD"
+      
+      # Important for filtering
+      - name: availability
+        description: Stock status (in_stock, out_of_stock)
+        values: [in_stock, out_of_stock, preorder, backorder]
+      
+      - name: brand
+        description: Product brand/manufacturer
+      
+      - name: category
+        description: Product category
+      
+      # Optional but valuable
+      - name: sku
+        description: Stock keeping unit / product ID
+      
+      - name: rating
+        description: Average customer rating (0-5)
+        type: number
+      
+      - name: review_count
+        description: Number of reviews
+        type: integer
+      
+      - name: image_url
+        description: Main product image URL
+      
+      - name: description
+        description: Product description text
+
+  recipes:
+    description: Recipe and cooking content
+    use_cases:
+      - Meal planning apps
+      - Recipe search
+      - Nutrition tracking
+    
+    fields:
+      - name: title
+        description: Recipe name
+        required: true
+      
+      - name: ingredients
+        description: List of ingredients
+        required: true
+        type: array
+      
+      - name: instructions
+        description: Cooking steps
+        type: array
+      
+      - name: prep_time
+        description: Preparation time (minutes)
+        type: integer
+      
+      - name: cook_time
+        description: Cooking time (minutes)
+        type: integer
+      
+      - name: servings
+        description: Number of servings
+        type: integer
+      
+      - name: calories
+        description: Calories per serving
+        type: integer
+      
+      - name: cuisine
+        description: Cuisine type (Italian, Mexican, etc.)
+      
+      - name: difficulty
+        description: Difficulty level
+
+  jobs:
+    description: Job posting pages
+    use_cases:
+      - Job search platforms
+      - Career site aggregation
+      - Salary research
+    
+    fields:
+      - name: job_title
+        description: Position title
+        required: true
+      
+      - name: company
+        description: Hiring company name
+        required: true
+      
+      - name: location
+        description: Job location
+      
+      - name: salary_min
+        description: Minimum salary
+        type: number
+      
+      - name: salary_max
+        description: Maximum salary
+        type: number
+      
+      - name: employment_type
+        description: Full-time, part-time, contract
+        values: [full_time, part_time, contract, internship]
+      
+      - name: remote
+        description: Remote work option
+        type: boolean
+      
+      - name: requirements
+        description: Job requirements
+        type: array
+      
+      - name: posted_date
+        description: When job was posted
+        type: date
+
+  articles:
+    description: Blog posts, news articles
+    use_cases:
+      - News aggregation
+      - Content search
+      - Knowledge bases
+    
+    fields:
+      - name: title
+        description: Article headline
+        required: true
+      
+      - name: author
+        description: Article author
+      
+      - name: publish_date
+        description: Publication date
+        type: date
+      
+      - name: category
+        description: Article category/section
+      
+      - name: tags
+        description: Article tags/keywords
+        type: array
+      
+      - name: summary
+        description: Article summary/excerpt
+      
+      - name: reading_time
+        description: Estimated reading time (minutes)
+        type: integer
+
+  documentation:
+    description: Technical documentation, API docs
+    use_cases:
+      - Developer search
+      - Knowledge base
+      - RAG applications
+    
+    fields:
+      - name: title
+        description: Page/section title
+        required: true
+      
+      - name: content
+        description: Main documentation text
+        required: true
+      
+      - name: code_examples
+        description: Code snippets
+        type: array
+      
+      - name: version
+        description: Product/API version
+      
+      - name: product
+        description: Product name
+      
+      - name: section
+        description: Documentation section
+      
+      - name: related_pages
+        description: Links to related docs
+        type: array
+
+  general:
+    description: Default for unclassified content
+    use_cases:
+      - General web crawling
+      - Content archival
+    
+    fields:
+      - name: title
+        description: Page title
+        required: true
+      
+      - name: content
+        description: Main page content
+        required: true
+      
+      - name: description
+        description: Page meta description
