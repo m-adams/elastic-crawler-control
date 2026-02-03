@@ -42,6 +42,9 @@ from agents.site_investigation_tools import (
     SITE_INVESTIGATION_TOOLS,
     reset_tool_instances,
 )
+from utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 # Agent instructions for LLM-powered investigation
@@ -179,6 +182,8 @@ class SiteInvestigationAgent:
         self,
         domain: str,
         seed_urls: list[str] | None = None,
+        preflight_data: dict | None = None,
+        user_context: str | None = None,
     ) -> Dict[str, Any]:
         """
         Investigate a target domain to understand its structure.
@@ -190,6 +195,8 @@ class SiteInvestigationAgent:
         Args:
             domain: Target domain to investigate (e.g., "https://example.com")
             seed_urls: Optional seed URLs to start from
+            preflight_data: Optional preflight results (contains robots.txt to avoid re-fetch)
+            user_context: Optional user description of their goals/use case for crawling
             
         Returns:
             Site analysis report containing:
@@ -211,21 +218,45 @@ class SiteInvestigationAgent:
             "domain": domain,
             "domain_name": domain_name,
             "seed_urls": seed_urls or [],
+            "user_context": user_context,
             "status": "investigating",
         }
         
-        # Phase 1: Fetch and analyze robots.txt
-        print(f"Investigating {domain}: Fetching robots.txt...")
-        robots_data = await self.robots_parser.fetch_and_parse(domain)
-        report["robots_txt"] = self._format_robots_data(robots_data)
-        
-        if not robots_data.accessible:
-            report["status"] = "error"
-            report["error"] = robots_data.error
-            return report
+        # Phase 1: Get robots.txt (use preflight data if available to avoid re-fetch)
+        if preflight_data and preflight_data.get("robots_txt"):
+            logger.info("Using robots.txt from preflight (avoiding re-fetch)", domain=domain)
+            robots_txt_data = preflight_data["robots_txt"]
+            # Convert preflight format to RobotsData
+            robots_data = RobotsData(
+                accessible=robots_txt_data.get("exists", True),
+                sitemaps=robots_txt_data.get("sitemap_urls", []),
+                rules=[],  # Preflight only stores summary, not full rules
+                error=None,
+            )
+            # If preflight has blocked_paths, we need to create rules
+            if robots_txt_data.get("blocked_paths"):
+                from utils.robots_parser import RobotsRule
+                robots_data.rules.append(RobotsRule(
+                    user_agent="*",
+                    allow=[],
+                    disallow=robots_txt_data.get("blocked_paths", []),
+                    crawl_delay=robots_txt_data.get("crawl_delay"),
+                ))
+            report["robots_txt"] = self._format_robots_data(robots_data)
+            report["robots_txt"]["from_preflight"] = True
+        else:
+            logger.info("Fetching robots.txt", domain=domain)
+            robots_data = await self.robots_parser.fetch_and_parse(domain)
+            report["robots_txt"] = self._format_robots_data(robots_data)
+            
+            if not robots_data.accessible:
+                logger.warning("robots.txt not accessible", domain=domain, error=robots_data.error)
+                report["status"] = "error"
+                report["error"] = robots_data.error
+                return report
         
         # Phase 2: Discover and parse sitemaps
-        print(f"Investigating {domain}: Parsing sitemaps...")
+        logger.info("Parsing sitemaps", domain=domain, sitemap_count=len(robots_data.sitemaps))
         sitemap_urls = robots_data.sitemaps
         
         if sitemap_urls:
@@ -236,8 +267,9 @@ class SiteInvestigationAgent:
             report["sitemaps"] = {
                 "sitemap_urls": sitemap_urls,
                 "total_urls_found": len(all_sitemap_urls),
-                "sample_urls": [url.loc for url in all_sitemap_urls[:20]],
+                "sample_urls": [url.loc for url in all_sitemap_urls[:200]],  # Store more for extraction planning
             }
+            logger.debug("Sitemaps parsed", urls_found=len(all_sitemap_urls))
         else:
             all_sitemap_urls = []
             report["sitemaps"] = {
@@ -245,21 +277,23 @@ class SiteInvestigationAgent:
                 "total_urls_found": 0,
                 "sample_urls": [],
             }
+            logger.debug("No sitemaps found")
         
         # Phase 3: Select sample pages to fetch
-        print(f"Investigating {domain}: Selecting sample pages...")
         sample_urls = self._select_sample_urls(
             domain,
             seed_urls,
             all_sitemap_urls,
             self.sample_page_count,
         )
+        logger.info("Selected sample pages", domain=domain, count=len(sample_urls))
         
         # Phase 4: Fetch sample pages
-        print(f"Investigating {domain}: Fetching {len(sample_urls)} sample pages...")
+        logger.info("Fetching sample pages", domain=domain, count=len(sample_urls))
         fetch_result = await self.page_fetcher.fetch_pages(sample_urls)
         
         if fetch_result.bot_protection_detected:
+            logger.warning("Bot protection detected", domain=domain)
             report["status"] = "warning"
             report["warning"] = "Bot protection detected on some pages"
         
@@ -269,9 +303,15 @@ class SiteInvestigationAgent:
             "failed": fetch_result.failed,
             "bot_protection_detected": fetch_result.bot_protection_detected,
         }
+        logger.info(
+            "Page fetch complete",
+            domain=domain,
+            successful=fetch_result.successful,
+            failed=fetch_result.failed,
+        )
         
         # Phase 5: Analyze page structure
-        print(f"Investigating {domain}: Analyzing page structure...")
+        logger.info("Analyzing page structure", domain=domain, pages=fetch_result.successful)
         page_structures = []
         for page in fetch_result.pages:
             if page.html_content and not page.error:
@@ -288,25 +328,35 @@ class SiteInvestigationAgent:
             for struct in page_structures[:3]  # First 3 pages
         ]
         
+        # Include raw HTML samples for LLM extraction rule generation
+        # Prioritize content pages over section/topic pages for better extraction rules
+        report["html_samples"] = self._select_html_samples_for_extraction(
+            fetch_result.pages, domain, max_samples=3
+        )
+        logger.debug("Stored HTML samples for extraction", count=len(report["html_samples"]))
+        
         # Phase 6: LLM analysis (if available)
         if self.use_agno:
-            print(f"Investigating {domain}: Running Agno LLM analysis...")
+            logger.info("Running Agno LLM analysis", domain=domain, has_user_context=bool(user_context))
             try:
                 llm_analysis = await self._analyze_with_agno(
                     domain,
                     robots_data,
                     page_structures,
                     pattern_analysis,
+                    user_context=user_context,
                 )
                 report["llm_analysis"] = llm_analysis
+                logger.debug("LLM analysis complete", domain=domain, status="completed")
             except Exception as e:
+                logger.exception("LLM analysis failed", domain=domain)
                 report["llm_analysis"] = {
                     "status": "error",
                     "error": str(e),
                 }
         elif self.llm_client:
             # Legacy LLM client fallback
-            print(f"Investigating {domain}: Running legacy LLM analysis...")
+            logger.info("Running legacy LLM analysis", domain=domain)
             try:
                 llm_analysis = await self._analyze_with_llm(
                     domain,
@@ -316,11 +366,13 @@ class SiteInvestigationAgent:
                 )
                 report["llm_analysis"] = llm_analysis
             except Exception as e:
+                logger.exception("Legacy LLM analysis failed", domain=domain)
                 report["llm_analysis"] = {
                     "status": "error",
                     "error": str(e),
                 }
         else:
+            logger.debug("LLM analysis disabled (no API key)", domain=domain)
             report["llm_analysis"] = {
                 "status": "disabled",
                 "message": "LLM analysis not available (no API key configured)",
@@ -376,6 +428,135 @@ class SiteInvestigationAgent:
             selected.append(domain)
         
         return selected
+    
+    def _select_html_samples_for_extraction(
+        self,
+        pages: list,
+        domain: str,
+        max_samples: int = 3,
+    ) -> list[dict]:
+        """
+        Select HTML samples for extraction rule generation.
+        
+        Prioritizes actual content pages over section/navigation pages.
+        This ensures the LLM sees representative content when designing
+        extraction rules, not just homepage or category pages.
+        
+        Args:
+            pages: List of fetched page objects
+            domain: The target domain
+            max_samples: Maximum number of HTML samples to store
+        
+        Returns:
+            List of HTML sample dicts with url, html, and full_length
+        """
+        import re
+        from urllib.parse import urlparse
+        
+        def score_page_for_extraction(page) -> tuple[int, int]:
+            """
+            Score a page for extraction suitability.
+            Higher score = more likely to be useful content page.
+            
+            Returns (score, content_length) for sorting.
+            """
+            if not page.html_content or page.error:
+                return (-1000, 0)
+            
+            url = page.url
+            parsed = urlparse(url)
+            path = parsed.path.rstrip('/')
+            
+            score = 0
+            
+            # Penalize homepage/root
+            if not path or path == '':
+                score -= 100
+            
+            # Penalize short paths (likely section pages like /sport, /news)
+            path_segments = [s for s in path.split('/') if s]
+            if len(path_segments) <= 1:
+                score -= 50
+            elif len(path_segments) >= 3:
+                score += 30  # Deeper paths more likely to be content
+            
+            # Reward paths that look like articles
+            article_patterns = [
+                r'/article', r'/news/', r'/story/', r'/post/',
+                r'/blog/', r'/\d{4}/\d{2}/',  # Date patterns like /2024/01/
+                r'/p/\w+', r'/a/\w+',  # Short article IDs
+            ]
+            for pattern in article_patterns:
+                if re.search(pattern, path, re.IGNORECASE):
+                    score += 50
+                    break
+            
+            # Penalize paths that look like navigation/sections
+            nav_patterns = [
+                r'^/topics?/?$', r'^/categor', r'^/tag/?$',
+                r'^/search', r'^/about', r'^/contact',
+                r'^/[a-z]+/?$',  # Single-word top-level paths
+            ]
+            for pattern in nav_patterns:
+                if re.search(pattern, path, re.IGNORECASE):
+                    score -= 30
+                    break
+            
+            # Reward longer content (articles tend to be longer)
+            content_length = len(page.html_content)
+            if content_length > 100000:
+                score += 20
+            elif content_length > 50000:
+                score += 10
+            
+            # Check for article indicators in HTML
+            html_lower = page.html_content[:5000].lower()  # Check first 5k chars
+            if '<article' in html_lower:
+                score += 40
+            if 'itemprop="article' in html_lower or 'itemtype="http://schema.org/article' in html_lower:
+                score += 40
+            if '"@type":"article' in html_lower or '"@type": "article' in html_lower:
+                score += 40
+            if 'class="author' in html_lower or 'rel="author' in html_lower:
+                score += 20
+            if 'datetime=' in html_lower or 'publisheddate' in html_lower:
+                score += 20
+            
+            return (score, content_length)
+        
+        # Score and sort pages
+        scored_pages = []
+        for page in pages:
+            if page.html_content and not page.error:
+                score, content_len = score_page_for_extraction(page)
+                scored_pages.append((score, content_len, page))
+        
+        # Sort by score descending, then content length descending
+        scored_pages.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        
+        # Take top pages
+        html_samples = []
+        for score, content_len, page in scored_pages[:max_samples]:
+            # Truncate to avoid overwhelming LLM context
+            html_snippet = page.html_content[:15000]
+            if len(page.html_content) > 15000:
+                html_snippet += "\n<!-- ... HTML truncated ... -->"
+            
+            html_samples.append({
+                "url": page.url,
+                "html": html_snippet,
+                "full_length": len(page.html_content),
+                "extraction_score": score,  # Include for debugging
+            })
+            
+            logger.debug(
+                "Selected HTML sample for extraction",
+                url=page.url,
+                score=score,
+                content_length=content_len,
+            )
+        
+        return html_samples
     
     def _format_robots_data(self, robots_data: RobotsData) -> dict:
         """Format robots.txt data for report."""
@@ -441,20 +622,32 @@ class SiteInvestigationAgent:
         }
         
         # Crawl rule recommendations based on robots.txt
+        # Only use rules for User-agent: * (not bot-specific blocks like ClaudeBot, GPTBot)
         if robots_data.rules:
             for rule in robots_data.rules:
+                # Only apply rules for the wildcard user-agent
+                # Skip bot-specific blocks (e.g., "ClaudeBot", "GPTBot", "Scrapy")
+                if rule.user_agent != "*":
+                    continue
+                
                 if rule.disallow:
-                    recommendations["crawl_rules"].append({
-                        "type": "exclude_paths",
-                        "patterns": rule.disallow,
-                        "reason": f"Disallowed by robots.txt for {rule.user_agent}",
-                    })
+                    # Filter out overly broad disallows like "/" which would block everything
+                    meaningful_disallows = [
+                        pattern for pattern in rule.disallow 
+                        if pattern and pattern != "/" and len(pattern) > 1
+                    ]
+                    if meaningful_disallows:
+                        recommendations["crawl_rules"].append({
+                            "type": "exclude_paths",
+                            "patterns": meaningful_disallows,
+                            "reason": "Disallowed by robots.txt",
+                        })
                 
                 if rule.crawl_delay:
                     recommendations["crawl_rules"].append({
                         "type": "crawl_delay",
                         "value": rule.crawl_delay,
-                        "reason": f"Recommended by robots.txt for {rule.user_agent}",
+                        "reason": "Recommended crawl delay from robots.txt",
                     })
         
         # Extraction recommendations based on patterns
@@ -494,9 +687,17 @@ class SiteInvestigationAgent:
         robots_data: RobotsData,
         page_structures: list[PageStructure],
         pattern_analysis: dict,
+        user_context: str | None = None,
     ) -> dict:
         """
         Use Agno Agent to analyze the site and generate recommendations.
+        
+        Args:
+            domain: Target domain
+            robots_data: Parsed robots.txt data
+            page_structures: Analyzed page structures
+            pattern_analysis: Patterns found across pages
+            user_context: Optional user description of their goals/use case
         """
         # Prepare summary for LLM
         summary = {
@@ -518,25 +719,41 @@ class SiteInvestigationAgent:
             ],
         }
         
-        # Create prompt for analysis
-        prompt = f"""Analyze this website investigation report and provide recommendations for web crawling configuration.
+        # Build user context section if provided
+        user_context_section = ""
+        if user_context:
+            user_context_section = f"""
+USER'S GOALS AND USE CASE:
+{user_context}
 
+IMPORTANT: Your analysis should be tailored to help achieve the user's stated goals above.
+Focus on finding content and patterns that match what they want to crawl.
+"""
+        
+        # Create prompt for analysis
+        # Build conditional suffixes (f-strings can't have backslash escapes)
+        content_suffix = " Focus on content relevant to the user's goals." if user_context else ""
+        extraction_suffix = " Prioritize fields that match the user's stated needs." if user_context else ""
+        crawl_suffix = " Consider the user's focus areas." if user_context else ""
+        
+        prompt = f"""Analyze this website investigation report and provide recommendations for web crawling configuration.
+{user_context_section}
 Website: {domain}
 
 Investigation Summary:
 {json.dumps(summary, indent=2)}
 
 Please provide:
-1. Content Type Analysis: What types of content does this site have? (e.g., blog articles, product pages, documentation)
-2. Extraction Recommendations: What fields should be extracted from pages? Suggest CSS selectors or patterns.
-3. Crawl Strategy: How should the crawler navigate this site? What patterns should be followed or avoided?
+1. Content Type Analysis: What types of content does this site have? (e.g., blog articles, product pages, documentation){content_suffix}
+2. Extraction Recommendations: What fields should be extracted from pages? Suggest CSS selectors or patterns.{extraction_suffix}
+3. Crawl Strategy: How should the crawler navigate this site? What patterns should be followed or avoided?{crawl_suffix}
 4. Potential Challenges: What issues might arise during crawling? (bot protection, dynamic content, etc.)
 
 Format your response as structured recommendations."""
         
-        # Get or create agent and run analysis
+        # Get or create agent and run analysis (using async method)
         agent = self._get_agno_agent()
-        response = agent.run(prompt)
+        response = await agent.arun(prompt)
         
         # Extract content from response
         content = response.content if hasattr(response, 'content') else str(response)
